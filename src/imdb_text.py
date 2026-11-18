@@ -181,7 +181,8 @@ def full_text_reviews():
     inverse = {number + 3: word for word, number in raw.items()}
     inverse.update(RESERVED)
     (_, _), (x_test, y_test) = keras.datasets.imdb.load_data(num_words=None)
-    texts = [" ".join(inverse.get(int(n), "") for n in review if int(n) > 2) for review in x_test]
+    texts = [" ".join(w for w in (inverse.get(int(n), "") for n in review if int(n) > 2) if w != "br")
+             for review in x_test]                     # "br" is what is left of the line breaks <br />
     return texts, np.asarray(y_test)
 
 

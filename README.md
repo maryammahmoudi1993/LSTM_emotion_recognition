@@ -5,20 +5,21 @@
 
 [![Open notebook 01 in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maryammahmoudi1993/LSTM_emotion_recognition/blob/main/notebooks/01_text_to_numbers_embeddings_lstm.ipynb)
 
-> **Status: in progress.** Notebook 01 is ready. Notebooks 02 and 03 are planned (see the table of contents).
+> **Status: in progress.** Notebooks 01 and 02 are ready. Notebook 03 is planned (see the table of contents).
 
 ## Who this is for
 
 - **For:** learners who know basic Python and NumPy and have never trained a neural network on text.
 - **Not needed:** a GPU, a maths degree, or your own data. Everything runs on a laptop CPU.
-- **Time:** about 35 minutes for notebook 01 (about four minutes of training).
+- **Time:** about 35 minutes for notebook 01 (about four minutes of training) and about 40 minutes for notebook 02 (about twelve minutes of training).
 
-## What you will learn (notebook 01)
+## What you will learn
 
 - How a review becomes a list of word numbers, and why padding is needed.
 - What an embedding is (a learned lookup table of coordinates) and what it learned here.
 - How an LSTM reads a sentence with a gated memory, and why a plain `SimpleRNN` is unstable.
-- Why every neural result needs a simple baseline next to it (here: counting words).
+- Why every neural result needs a simple baseline next to it (here: counting words). (01)
+- What "pretrained" means, how to start an LSTM from pretrained GloVe word vectors, and how to compare models fairly with several seeds and one shared test set. (02)
 
 ## The pipeline in one picture
 
@@ -51,7 +52,7 @@ jupyter lab notebooks/
 
 If `jupyter` is not found, run `pip install jupyterlab` first (it is not needed to run the tests).
 
-Check that everything works (runs the smoke tests and every notebook, about four minutes):
+Check that everything works (runs the smoke tests and every notebook, about seventeen minutes):
 
 ```bash
 python -m pytest -q
@@ -64,13 +65,15 @@ The data (IMDB reviews as provided by Keras, about 20 MB) is downloaded automati
 | # | Notebook | You will learn | Status |
 |---|---|---|---|
 | 01 | [From words to numbers: embeddings and a first LSTM](notebooks/01_text_to_numbers_embeddings_lstm.ipynb) | text to numbers, embeddings, LSTM, a simple baseline, honest evaluation | ready |
-| 02 | Compare with a small pretrained model on a fixed subset | planned | |
+| 02 | [Pretrained word vectors and an honest comparison](notebooks/02_pretrained_vectors_and_baselines.ipynb) | transfer learning with GloVe, frozen versus fine-tuned, three seeds, bag of words and VADER as reference points | ready |
 | 03 | Word-level explanations | planned | |
 
 Other folders: [`src/`](src) shared code, [`tests/`](tests) smoke tests and a test that runs every notebook,
 [`legacy/`](legacy) the original 2023 files (untouched), [`assets/`](assets) figures and [credits](assets/CREDITS.md).
 
 ## Results so far
+
+### Notebook 01
 
 All numbers come from running notebook 01 (fixed seed 42, CPU, 20,000 training and 5,000 validation reviews, at most 6 epochs,
 the weights of the epoch with the best validation accuracy are kept, evaluation on the official 25,000 test reviews, one run each).
@@ -82,7 +85,24 @@ the weights of the epoch with the best validation accuracy are kept, evaluation 
 | LSTM | 0.8626 |
 
 The LSTM and the word-counting baseline are about half a percentage point apart: from one run we cannot say that the LSTM is better.
-Notebook 02 will add a pretrained model on a fixed subset.
+
+### Notebook 02: pretrained word vectors (same data, 25,000 test reviews, seeds 42, 1, 2)
+
+| Model | Test accuracy |
+|---|---|
+| LSTM + GloVe fine-tuned (3 seeds) | 0.8704 mean (0.8661 to 0.8738) |
+| LSTM from scratch (3 seeds) | 0.8625 mean (0.8574 to 0.8675) |
+| Bag of words + logistic regression | 0.8572 |
+| LSTM + GloVe frozen (1 seed, 6 epochs) | 0.8285 |
+| VADER, a ready-made rule-based tool, no training (on rebuilt text without punctuation) | 0.6984 |
+
+Fine-tuned GloVe was ahead of the from-scratch LSTM for every seed (by 0.35, 0.63 and 1.40 points), a small and consistent gain; the word-counting baseline is only about one point behind the best LSTM.
+**Not tested:** a pretrained Transformer. The host that serves such models (huggingface.co) refused the connection from the environment in which this was written, so no result for one is claimed.
+
+<p align="center">
+  <img src="assets/02_results.png" alt="Bar chart of the test accuracy of five ways to classify IMDB reviews" width="760"><br>
+  <em>Test accuracy of the compared models (bars start at 0.5, the coin-flip level; thin lines span the seeds).</em>
+</p>
 
 ## Learning journey
 
@@ -102,11 +122,14 @@ See [`legacy/ABOUT.md`](legacy/ABOUT.md) for what I notice in the original noteb
 - Small models, few epochs and one seed: the numbers show a trend, not the best possible accuracy.
 - Reviews are cut to 200 words and rare words are replaced by "unknown".
 - The IMDB data set is English movie reviews; the models say nothing about other kinds of text.
+- The GloVe vectors are downloaded from the gensim-data distribution; the licence listed there is the Public Domain Dedication and License (PDDL). I could not open the original Stanford page to double-check it.
 - **Licence of the data:** I could not check the terms of use of the data set from the environment where this was written; the data is loaded through Keras and is not part of this repository (see [`data/README.md`](data/README.md)).
 
 ## Further reading
 
 - Maas, Daly, Pham, Huang, Ng and Potts (2011), *Learning Word Vectors for Sentiment Analysis*, ACL 2011, <https://aclanthology.org/P11-1015/> (the data set).
+- Pennington, Socher and Manning (2014), *GloVe: Global Vectors for Word Representation*, EMNLP 2014, <https://aclanthology.org/D14-1162/> (the pretrained vectors).
+- Hutto and Gilbert (2014), *VADER: A Parsimonious Rule-based Model for Sentiment Analysis of Social Media Text*, ICWSM 2014 (the ready-made tool).
 - Hochreiter and Schmidhuber (1997), *Long Short-Term Memory*, Neural Computation 9(8), 1735-1780 (the LSTM).
 - Keras documentation: [Embedding layer](https://keras.io/api/layers/core_layers/embedding/) and [LSTM layer](https://keras.io/api/layers/recurrent_layers/lstm/).
 

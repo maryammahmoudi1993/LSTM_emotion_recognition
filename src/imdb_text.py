@@ -138,6 +138,7 @@ def plot_lengths(lengths, labels):
     counts = np.bincount(labels)
     b.bar(["negative", "positive"], counts, color=["tab:red", "tab:green"])
     b.set_title("class balance (training)")
+    b.set_ylim(0, counts.max() * 1.12)
     for x, c in enumerate(counts):
         b.text(x, c, str(c), ha="center", va="bottom")
     return fig

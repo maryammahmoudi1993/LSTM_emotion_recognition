@@ -1,0 +1,29 @@
+name: hygiene-check
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    env:
+      HEAD_REF: ${{ github.head_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Search files, commit messages and branch name
+        run: |
+          pattern='cla[u]de|anthro[p]ic'
+          status=0
+          if git grep -IilE "$pattern" -- . ; then
+            echo "Forbidden words found in the files listed above"; status=1
+          fi
+          if git log --format="%an%n%ae%n%B" | grep -iE "$pattern" ; then
+            echo "Forbidden words found in commit messages or authors"; status=1
+          fi
+          if echo "$HEAD_REF" | grep -iE "$pattern" ; then
+            echo "Forbidden words found in the branch name"; status=1
+          fi
+          exit $status

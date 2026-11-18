@@ -91,12 +91,22 @@ def bag_of_words(sequences):
 
 
 # ---------------------------------------------------------------- models
-def build_model(kind="lstm", embedding_dim=32, units=32):
-    """Embedding -> recurrent layer -> one output between 0 (negative) and 1 (positive)."""
+def build_model(kind="lstm", embedding_dim=32, units=32, embedding_matrix=None, trainable=True):
+    """Embedding -> recurrent layer -> one output between 0 (negative) and 1 (positive).
+
+    If ``embedding_matrix`` (VOCAB x dimension) is given, the embedding table starts from these
+    pretrained vectors; with ``trainable=False`` it stays frozen during training.
+    """
     recurrent = {"lstm": keras.layers.LSTM, "simple_rnn": keras.layers.SimpleRNN}[kind]
+    if embedding_matrix is None:
+        embedding = keras.layers.Embedding(VOCAB, embedding_dim)
+    else:
+        embedding = keras.layers.Embedding(
+            VOCAB, embedding_matrix.shape[1],
+            embeddings_initializer=keras.initializers.Constant(embedding_matrix), trainable=trainable)
     return keras.Sequential([
         keras.layers.Input((MAXLEN,)),
-        keras.layers.Embedding(VOCAB, embedding_dim),
+        embedding,
         recurrent(units),
         keras.layers.Dense(1, activation="sigmoid"),
     ], name=kind)
@@ -107,11 +117,11 @@ def compile_model(model):
     return model
 
 
-def train(kind, x_train, y_train, x_val, y_val, epochs=6, batch_size=64):
+def train(kind, x_train, y_train, x_val, y_val, epochs=6, batch_size=64, seed=SEED, **model_options):
     """Train one model and return (model, history). The weights of the epoch with the best
     *validation* accuracy are restored at the end (the test set is not involved)."""
-    set_seed()
-    model = compile_model(build_model(kind))
+    set_seed(seed)
+    model = compile_model(build_model(kind, **model_options))
     stop = keras.callbacks.EarlyStopping(monitor="val_accuracy", patience=epochs,
                                          restore_best_weights=True)
     history = model.fit(x_train, y_train, epochs=epochs, batch_size=batch_size,
@@ -125,6 +135,62 @@ def cosine_neighbours(matrix, mapping, inverse, word, k=6):
     similarity = vectors @ vectors[mapping[word]]
     best = [i for i in np.argsort(-similarity) if i > 2 and i != mapping[word]][:k]
     return [(inverse[i], float(similarity[i])) for i in best]
+
+
+# ---------------------------------------------------------------- pretrained pieces
+GLOVE_URL = ("https://github.com/RaRe-Technologies/gensim-data/releases/download/"
+             "glove-wiki-gigaword-50/glove-wiki-gigaword-50.gz")
+GLOVE_SHA256 = "5c55f98957aa9fed8d2ac5fb1dcff57af3b23c5a3ee7af3f7945f8d49198eb24"
+
+
+def download_glove():
+    """Download the GloVe vectors (50 numbers for each of 400,000 words, about 69 MB, stored by Keras
+    in ~/.keras/datasets, not in this repository) and check their checksum."""
+    return keras.utils.get_file("glove-wiki-gigaword-50.gz", GLOVE_URL, file_hash=GLOVE_SHA256,
+                                hash_algorithm="sha256")
+
+
+def glove_matrix(path, mapping, dimension=50):
+    """Build the embedding table for our 10,000 words from the GloVe file.
+
+    Returns (matrix, found): words that GloVe does not know (and the three reserved numbers) get
+    small random numbers; ``found`` counts the words that did get a pretrained vector.
+    """
+    import gzip
+    rng = np.random.default_rng(SEED)
+    matrix = rng.normal(0.0, 0.05, size=(VOCAB, dimension)).astype("float32")
+    matrix[0] = 0.0
+    found = 0
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        next(handle)                                   # header line: "400000 50"
+        for line in handle:
+            word, _, rest = line.partition(" ")
+            index = mapping.get(word)
+            if index is not None:
+                matrix[index] = np.asarray(rest.split(), dtype="float32")
+                found += 1
+    return matrix, found
+
+
+def full_text_reviews():
+    """The 25,000 test reviews as text rebuilt from the *full* word list (no 10,000-word limit).
+
+    The original reviews are only stored as word numbers: capital letters and punctuation are gone.
+    """
+    raw = keras.datasets.imdb.get_word_index()
+    inverse = {number + 3: word for word, number in raw.items()}
+    inverse.update(RESERVED)
+    (_, _), (x_test, y_test) = keras.datasets.imdb.load_data(num_words=None)
+    texts = [" ".join(inverse.get(int(n), "") for n in review if int(n) > 2) for review in x_test]
+    return texts, np.asarray(y_test)
+
+
+def vader_predictions(texts):
+    """VADER (Hutto and Gilbert, 2014): a hand-made sentiment dictionary plus a few rules, no training.
+    Returns 1 (positive) when the overall "compound" score is above 0, otherwise 0."""
+    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+    analyzer = SentimentIntensityAnalyzer()
+    return np.array([int(analyzer.polarity_scores(text)["compound"] > 0) for text in texts])
 
 
 # ---------------------------------------------------------------- figures
@@ -191,4 +257,18 @@ def plot_embedding_map(matrix, mapping, positive, negative):
         ax.annotate(word, points[k], fontsize=8, xytext=(3, 3), textcoords="offset points")
     ax.set_title("embedding vectors of sentiment words (2-D projection)\ngreen = positive words, red = negative words")
     ax.set_xlabel("first direction"); ax.set_ylabel("second direction")
+    return fig
+
+
+def plot_results(names, means, lows, highs, colors=None):
+    """Horizontal bars of test accuracy; the thin line spans the smallest to the largest value over seeds."""
+    fig, ax = plt.subplots(figsize=(8.5, 3.6))
+    positions = np.arange(len(names))[::-1]
+    ax.barh(positions, means, color=colors or "tab:blue", alpha=.85)
+    ax.hlines(positions, lows, highs, color="black", lw=1.5)
+    for y, m in zip(positions, means):
+        ax.text(m + 0.004, y, f"{m:.3f}", va="center", fontsize=9)
+    ax.set_yticks(positions); ax.set_yticklabels(names)
+    ax.set_xlim(0.5, 0.95); ax.set_xlabel("test accuracy on 25,000 reviews (higher is better)")
+    ax.grid(axis="x", alpha=.3)
     return fig

@@ -51,3 +51,22 @@ def test_training_is_reproducible():
         _, history = it.train("lstm", x, y, xv, yv[:100], epochs=1)
         losses.append(history["loss"][0])
     assert losses[0] == losses[1]
+
+
+def test_pretrained_embedding_matrix_is_used(tmp_path):
+    import gzip
+    mapping = {"good": 5, "bad": 6}
+    path = tmp_path / "tiny.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write("2 3\ngood 1 2 3\nbad -1 -2 -3\n")
+    matrix, found = it.glove_matrix(path, mapping, dimension=3)
+    assert found == 2 and matrix.shape == (it.VOCAB, 3)
+    assert list(matrix[5]) == [1, 2, 3] and list(matrix[6]) == [-1, -2, -3]
+    model = it.build_model("lstm", embedding_matrix=matrix, trainable=False)
+    assert np.allclose(model.layers[0].get_weights()[0][5], [1, 2, 3])
+    assert not model.layers[0].trainable and it.build_model("lstm").layers[0].trainable
+
+
+def test_vader_reads_obvious_sentences():
+    predictions = it.vader_predictions(["a wonderful and brilliant movie", "a terrible and boring movie"])
+    assert list(predictions) == [1, 0]

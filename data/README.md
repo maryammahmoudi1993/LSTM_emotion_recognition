@@ -13,7 +13,7 @@ Nothing is stored inside this repository.
 
 **Licence / terms:** I could not check the terms of use of the data set from the environment in which this tutorial was
 written (the page of the authors was not reachable). The data is therefore *not* copied into this repository, only loaded
-through Keras, and the short example reviews shown in the notebooks are single sentences used for teaching.
+through Keras. The only review text in the repository is a short excerpt (about 400 characters) of one training review in the saved output of notebook 01, and a few sentences written for teaching.
 Please read the terms on the authors' page before using the data for anything else.
 
 The notebook of the first version of this project (2023) used the same data set; it is kept in [`../legacy`](../legacy).

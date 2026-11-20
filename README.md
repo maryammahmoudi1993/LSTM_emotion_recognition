@@ -5,13 +5,13 @@
 
 [![Open notebook 01 in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maryammahmoudi1993/LSTM_emotion_recognition/blob/main/notebooks/01_text_to_numbers_embeddings_lstm.ipynb)
 
-> **Status: in progress.** Notebooks 01 and 02 are ready. Notebook 03 is planned (see the table of contents).
+> **Status:** all three notebooks are ready.
 
 ## Who this is for
 
 - **For:** learners who know basic Python and NumPy and have never trained a neural network on text.
 - **Not needed:** a GPU, a maths degree, or your own data. Everything runs on a laptop CPU.
-- **Time:** about 35 minutes for notebook 01 (about four minutes of training) and about 40 minutes for notebook 02 (about twelve minutes of training).
+- **Time:** about 35 minutes for notebook 01 (about four minutes of training) about 40 minutes for notebook 02 (about twelve minutes of training) and about 40 minutes for notebook 03 (about four minutes of computing).
 
 ## What you will learn
 
@@ -20,6 +20,7 @@
 - How an LSTM reads a sentence with a gated memory, and why a plain `SimpleRNN` is unstable.
 - Why every neural result needs a simple baseline next to it (here: counting words). (01)
 - What "pretrained" means, how to start an LSTM from pretrained GloVe word vectors, and how to compare models fairly with several seeds and one shared test set. (02)
+- How to explain a prediction word by word with occlusion, LIME and integrated gradients, how to test whether an explanation is faithful, and what explanations cannot tell you. (03)
 
 ## The pipeline in one picture
 
@@ -52,7 +53,7 @@ jupyter lab notebooks/
 
 If `jupyter` is not found, run `pip install jupyterlab` first (it is not needed to run the tests).
 
-Check that everything works (runs the smoke tests and every notebook, about seventeen minutes):
+Check that everything works (runs the smoke tests and every notebook, about twenty minutes):
 
 ```bash
 python -m pytest -q
@@ -66,7 +67,7 @@ The data (IMDB reviews as provided by Keras, about 20 MB) is downloaded automati
 |---|---|---|---|
 | 01 | [From words to numbers: embeddings and a first LSTM](notebooks/01_text_to_numbers_embeddings_lstm.ipynb) | text to numbers, embeddings, LSTM, a simple baseline, honest evaluation | ready |
 | 02 | [Pretrained word vectors and an honest comparison](notebooks/02_pretrained_vectors_and_baselines.ipynb) | transfer learning with GloVe, frozen versus fine-tuned, three seeds, bag of words and VADER as reference points | ready |
-| 03 | Word-level explanations | planned | |
+| 03 | [Why this verdict? Word-level explanations](notebooks/03_word_level_explanations.ipynb) | occlusion, LIME and integrated gradients, a deletion test of faithfulness, stability of LIME, and the limits of explanations | ready |
 
 Other folders: [`src/`](src) shared code, [`tests/`](tests) smoke tests and a test that runs every notebook,
 [`legacy/`](legacy) the original 2023 files (untouched), [`assets/`](assets) figures and [credits](assets/CREDITS.md).
@@ -104,6 +105,25 @@ Fine-tuned GloVe was ahead of the from-scratch LSTM for every seed (by 0.35, 0.6
   <em>Test accuracy of the compared models (bars start at 0.5, the coin-flip level; thin lines span the seeds).</em>
 </p>
 
+### Notebook 03: word-level explanations (the LSTM of notebook 01, 40 short test reviews)
+
+| Words deleted | Average drop of the model's confidence in its verdict |
+|---|---|
+| the 3 words picked by occlusion | 0.302 |
+| the 3 words picked by integrated gradients | 0.301 |
+| the 3 words picked by LIME | 0.291 |
+| the 3 words with the largest weights of the linear model | 0.241 |
+| 3 random words | 0.015 |
+
+The three explanation methods agree on about two of their three most important words and, in this test, describe the model faithfully; LIME was stable across two seeds (2.8 of 3 shared words on 10 reviews).
+They also revealed a failure: the first review (negative) is classified "positive" with 98% because the model leans on plot words and does not read "not good at all" as a negation.
+Explanations describe the model, not the world, and depend on the method (see the notebook for the limits).
+
+<p align="center">
+  <img src="assets/03_one_review.png" alt="One review with every word coloured by its score from occlusion, LIME and integrated gradients" width="760"><br>
+  <em>One review, three explanations (green: towards positive, red: towards negative).</em>
+</p>
+
 ## Learning journey
 
 | | **Then (2023, in [`legacy/`](legacy))** | **Now** |
@@ -120,6 +140,7 @@ See [`legacy/ABOUT.md`](legacy/ABOUT.md) for what I notice in the original noteb
 ## Limitations
 
 - Small models, few epochs and one seed: the numbers show a trend, not the best possible accuracy.
+- Word-level explanations were tested on 40 short reviews, one model and one seed.
 - Reviews are cut to 200 words and rare words are replaced by "unknown".
 - The IMDB data set is English movie reviews; the models say nothing about other kinds of text.
 - The GloVe vectors are downloaded from the gensim-data distribution; the licence listed there is the Public Domain Dedication and License (PDDL). I could not open the original Stanford page to double-check it.
@@ -130,6 +151,8 @@ See [`legacy/ABOUT.md`](legacy/ABOUT.md) for what I notice in the original noteb
 - Maas, Daly, Pham, Huang, Ng and Potts (2011), *Learning Word Vectors for Sentiment Analysis*, ACL 2011, <https://aclanthology.org/P11-1015/> (the data set).
 - Pennington, Socher and Manning (2014), *GloVe: Global Vectors for Word Representation*, EMNLP 2014, <https://aclanthology.org/D14-1162/> (the pretrained vectors).
 - Hutto and Gilbert (2014), *VADER: A Parsimonious Rule-based Model for Sentiment Analysis of Social Media Text*, ICWSM 2014 (the ready-made tool).
+- Ribeiro, Singh and Guestrin (2016), *"Why Should I Trust You?": Explaining the Predictions of Any Classifier*, KDD 2016 (LIME, <https://arxiv.org/abs/1602.04938>).
+- Sundararajan, Taly and Yan (2017), *Axiomatic Attribution for Deep Networks*, ICML 2017 (integrated gradients, <https://arxiv.org/abs/1703.01365>).
 - Hochreiter and Schmidhuber (1997), *Long Short-Term Memory*, Neural Computation 9(8), 1735-1780 (the LSTM).
 - Keras documentation: [Embedding layer](https://keras.io/api/layers/core_layers/embedding/) and [LSTM layer](https://keras.io/api/layers/recurrent_layers/lstm/).
 

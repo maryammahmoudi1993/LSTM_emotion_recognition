@@ -70,3 +70,17 @@ def test_pretrained_embedding_matrix_is_used(tmp_path):
 def test_vader_reads_obvious_sentences():
     predictions = it.vader_predictions(["a wonderful and brilliant movie", "a terrible and boring movie"])
     assert list(predictions) == [1, 0]
+
+
+def test_explanation_helpers_on_a_tiny_model():
+    mapping = it.word_to_id()
+    it.set_seed()
+    model = it.compile_model(it.build_model("lstm", units=8))
+    words = it.tokenize("a great movie but a boring ending")
+    scores, gap = it.integrated_gradients(model, words, mapping, steps=16)
+    assert scores.shape == (len(words),) and abs(gap) < 0.05             # scores add up to the change of the output
+    occlusion = it.occlusion_scores(model, words, mapping)
+    assert set(occlusion) == set(words) and it.by_word(["a", "a", "b"], [1, 2, 3]) == {"a": 3.0, "b": 3.0}
+    assert it.delete_words(words, ["a"]) == ["great", "movie", "but", "boring", "ending"]
+    lime = it.lime_scores(model, words, mapping, num_samples=60)
+    assert set(lime) <= set(words) and len(lime) > 0

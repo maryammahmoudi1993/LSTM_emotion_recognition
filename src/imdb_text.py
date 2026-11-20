@@ -194,6 +194,105 @@ def vader_predictions(texts):
     return np.array([int(analyzer.polarity_scores(text)["compound"] > 0) for text in texts])
 
 
+# ---------------------------------------------------------------- explanations (word level)
+def tokenize(text):
+    """The words of a text, exactly as ``encode`` sees them."""
+    return re.findall(r"[a-z']+", text.lower())
+
+
+def ids_of(words, mapping):
+    """Word numbers of a list of words (with the start symbol in front)."""
+    return [1] + [mapping.get(word, 2) for word in words]
+
+
+def probability_positive(model, words_list, mapping):
+    """Probability of "positive" for several reviews, each given as a list of words."""
+    batch = pad([ids_of(words, mapping) for words in words_list])
+    return model.predict(batch, batch_size=256, verbose=0)[:, 0]
+
+
+def integrated_gradients(model, words, mapping, steps=64):
+    """Integrated gradients (Sundararajan, Taly and Yan, 2017) for one review.
+
+    The review is walked from an "empty" input (all embedding vectors zero) to the real input in ``steps`` small steps;
+    the gradients of p(positive) with respect to the embedding vectors are averaged along the way and multiplied by the
+    total change. Returns (score per word position, completeness gap). The scores add up to
+    p(positive) of the review minus p(positive) of the empty input; the gap shows how well that holds.
+    """
+    x = pad([ids_of(words, mapping)])
+    embedding, rest = model.layers[0], model.layers[1:]
+    e = embedding(x)                                           # (1, 200, dimension)
+    baseline = tf.zeros_like(e)
+    alphas = tf.linspace(0.0, 1.0, steps + 1)[1:]
+    path = baseline + alphas[:, None, None] * (e - baseline)   # (steps, 200, dimension)
+    with tf.GradientTape() as tape:
+        tape.watch(path)
+        h = path
+        for layer in rest:
+            h = layer(h)
+        output = h[:, 0]                                       # p(positive) for every step of the path
+    gradients = tape.gradient(output, path)
+    scores = tf.reduce_sum((e[0] - baseline[0]) * tf.reduce_mean(gradients, axis=0), axis=-1).numpy()
+    h0 = baseline
+    for layer in rest:
+        h0 = layer(h0)
+    total = float(model(x)[0, 0]) - float(h0[0, 0])
+    n_words = len(words)
+    return scores[-n_words:], float(scores.sum()) - total     # last positions hold the real words
+
+
+def by_word(words, scores):
+    """Add up the scores of a word that occurs several times: {word: total score}."""
+    totals = {}
+    for word, score in zip(words, scores):
+        totals[word] = totals.get(word, 0.0) + float(score)
+    return totals
+
+
+def occlusion_scores(model, words, mapping):
+    """For every distinct word: how much p(positive) drops when all its occurrences are deleted."""
+    distinct = list(dict.fromkeys(words))
+    variants = [[w for w in words if w != word] for word in distinct]
+    base = probability_positive(model, [words], mapping)[0]
+    after = probability_positive(model, variants, mapping)
+    return {word: float(base - p) for word, p in zip(distinct, after)}
+
+
+def lime_scores(model, words, mapping, seed=SEED, num_samples=1000):
+    """LIME (Ribeiro, Singh and Guestrin, 2016) for one review: {word: weight toward "positive"}."""
+    from lime.lime_text import LimeTextExplainer
+
+    def predict(texts):
+        p = probability_positive(model, [tokenize(t) for t in texts], mapping)
+        return np.column_stack([1 - p, p])
+
+    explainer = LimeTextExplainer(class_names=["negative", "positive"], random_state=seed, bow=True)
+    explanation = explainer.explain_instance(" ".join(words), predict, labels=(1,), num_features=len(set(words)),
+                                             num_samples=num_samples)
+    return dict(explanation.as_list(label=1))
+
+
+def delete_words(words, to_delete):
+    """The review without the given words (all occurrences)."""
+    drop = set(to_delete)
+    return [w for w in words if w not in drop]
+
+
+def draw_words(ax, words, scores, per_line=9, limit=None):
+    """Write a review with every word coloured by its score (green = toward positive, red = toward negative)."""
+    limit = limit or max(1e-9, max(abs(v) for v in scores))
+    ax.axis("off")
+    lines = [list(zip(words[i:i + per_line], scores[i:i + per_line])) for i in range(0, len(words), per_line)]
+    for row, line in enumerate(lines):
+        x = 0.0
+        for word, score in line:
+            strength = min(1.0, abs(score) / limit)
+            color = (0.2, 0.65, 0.2, 0.15 + 0.85 * strength) if score > 0 else (0.85, 0.15, 0.15, 0.15 + 0.85 * strength)
+            ax.text(x, -row, word, fontsize=9, va="center", bbox=dict(boxstyle="round,pad=0.2", fc=color, ec="none"))
+            x += 0.012 * (len(word) + 2) + 0.01
+    ax.set_xlim(0, 1.15); ax.set_ylim(-len(lines), 1)
+
+
 # ---------------------------------------------------------------- figures
 def plot_lengths(lengths, labels):
     """Histogram of review lengths and the class balance."""
@@ -272,4 +371,31 @@ def plot_results(names, means, lows, highs, colors=None):
     ax.set_yticks(positions); ax.set_yticklabels(names)
     ax.set_xlim(0.5, 0.95); ax.set_xlabel("test accuracy on 25,000 reviews (higher is better)")
     ax.grid(axis="x", alpha=.3)
+    return fig
+
+
+def plot_top_words(words, scores, title, k=12):
+    """Horizontal bars of the ``k`` most positive and the ``k`` most negative words."""
+    order = np.argsort(scores)
+    pick = list(order[:k]) + list(order[-k:])
+    fig, ax = plt.subplots(figsize=(6.5, 5.5))
+    ax.barh(range(len(pick)), [scores[i] for i in pick],
+            color=["tab:red" if scores[i] < 0 else "tab:green" for i in pick])
+    ax.set_yticks(range(len(pick))); ax.set_yticklabels([words[i] for i in pick])
+    ax.axvline(0, color="black", lw=.8); ax.set_title(title)
+    ax.set_xlabel("weight (left: toward negative, right: toward positive)")
+    return fig
+
+
+def plot_deletion(names, means, medians):
+    """Mean (bar) and median (dot) drop of the predicted-class probability after deleting the top-3 words."""
+    fig, ax = plt.subplots(figsize=(8, 3.6))
+    positions = np.arange(len(names))[::-1]
+    ax.barh(positions, means, color="tab:blue", alpha=.85)
+    ax.plot(medians, positions, "ko", label="median")
+    for y, m in zip(positions, means):
+        ax.text(m + 0.006, y, f"{m:.3f}", va="center", fontsize=9)
+    ax.set_yticks(positions); ax.set_yticklabels(names)
+    ax.set_xlabel("drop of the predicted class's probability after deleting 3 words (larger = the words mattered more)")
+    ax.legend(); ax.grid(axis="x", alpha=.3)
     return fig

@@ -7,4 +7,6 @@ loaded through Keras; apart from the sentences written for teaching, the only re
 Notebook 02 also uses the GloVe vectors (Pennington, Socher and Manning, 2014, <https://aclanthology.org/D14-1162/>,
 distributed by gensim-data under the licence listed there, PDDL) and the VADER tool (Hutto and Gilbert, 2014, MIT licence); see [`../data/README.md`](../data/README.md).
 
+Notebook 03 uses the `lime` package (Ribeiro, Singh and Guestrin, 2016; BSD licence as published on PyPI) and implements occlusion and integrated gradients (Sundararajan, Taly and Yan, 2017) in `src/imdb_text.py`.
+
 No images from the internet are used.
